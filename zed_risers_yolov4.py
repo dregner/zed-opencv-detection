@@ -14,13 +14,13 @@ camera_settings = sl.VIDEO_SETTINGS.BRIGHTNESS
 str_camera_settings = "BRIGHTNESS"
 step_camera_settings = 1
 
-net_yolov4 = cv2.dnn.readNet('weights/yolov4_risers_final.weights', 'cfg/yolov4_risers.cfg')
+net_yolov4 = cv2.dnn.readNet('yolo_params/weights/yolov4_risers_final.weights', 'yolo_params/cfg/yolov4_risers.cfg')
 net_yolov4.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
 net_yolov4.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
 
 
 class_names = []
-coconames='cfg/coco.names'
+coconames='yolo_params/cfg/coco.names'
 with open(coconames,'rt') as f:
     class_names = f.read().rstrip('\n').split('\n')
     
@@ -60,19 +60,19 @@ def main():
             zed.retrieve_image(image_zed, sl.VIEW.LEFT)
             image_ocv = image_zed.get_data()
             classes, scores, boxes = model.detect(image_ocv, CONFIDENCE_THRESHOLD, NMS_THRESHOLD)
-            image_ocv = cv2.cvtColor(image_ocv, cv2.COLOR_RGBA2RGB).astype(np.float32)
+            # image_ocv = cv2.cvtColor(image_ocv, cv2.COLOR_RGBA2RGB).astype(np.float32)
             # image_ocv = cv2.cvtColor(image_ocv, cv2.COLOR_RGB2RGBA).astype(np.float32)
 
-            for (classid, score, box) in zip(classes, scores, boxes):
-                color = COLORS[int(classid) % len(COLORS)]
-                label = "%s : %f" % (class_names[classid[0]], score)
-                cv2.rectangle(image_ocv, box, color, 6)
-                cv2.putText(image_ocv, label, (box[0], box[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 4)
-                cv2.rectangle(image_ocv, box, color, 6)
-                cv2.putText(image_ocv, label, (box[0], box[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 4)
+            # for (classid, score, box) in zip(classes, scores, boxes):
+            #     color = COLORS[int(classid) % len(COLORS)]
+            #     label = "%s : %f" % (class_names[classid[0]], score)
+            #     cv2.rectangle(image_ocv, box, color, 6)
+            #     cv2.putText(image_ocv, label, (box[0], box[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 4)
+            #     cv2.rectangle(image_ocv, box, color, 6)
+            #     cv2.putText(image_ocv, label, (box[0], box[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 4)
 
-            img_resize = imutils.resize(image_ocv, width=800)
-            cv2.imshow("ZED Detection", img_resize)
+            #img_resize = imutils.resize(image_ocv, width=800)
+            cv2.imshow("ZED Detection", image_ocv)
             key = cv2.waitKey(5)         
         else:
             key = cv2.waitKey(5)

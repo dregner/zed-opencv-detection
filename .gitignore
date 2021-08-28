@@ -1,2 +1,3 @@
-/weights/yolov4_risers_final.weights
+/yolo_params/weights/yolov4_risers_final.weights
 /inference_risers_yolov4.py
+/zed_opencv/
