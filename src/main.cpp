@@ -12,6 +12,7 @@
 #include <opencv2/dnn.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp>
+#include <opencv2/cudaimgproc.hpp>
 
 
 cv::Mat slMat2cvMat(sl::Mat &input);
@@ -66,7 +67,7 @@ int main(int argc, char **argv) {
 
     // Load the network
     cv::dnn::Net net = cv::dnn::readNetFromDarknet(modelConfiguration, modelWeights);
-    if (device == "cpu") {
+    if (device == "gpu") {
         std::cout << "Using CPU device" << std::endl;
         net.setPreferableBackend(cv::dnn::DNN_TARGET_CPU);
     } else if (device == "gpu") {
@@ -82,8 +83,15 @@ int main(int argc, char **argv) {
     sl::InitParameters init_parameters;
     init_parameters.sdk_verbose = true;
     init_parameters.camera_resolution = sl::RESOLUTION::HD720;
-    init_parameters.depth_mode = sl::DEPTH_MODE::NONE; // no depth computation required here
-//    parseArgs(argc,argv, init_parameters);
+    init_parameters.camera_fps = 60;
+    init_parameters.depth_mode = sl::DEPTH_MODE::NONE;
+
+    // Open the camera
+    auto returned_state = zed.open(init_parameters);
+    if (returned_state != sl::ERROR_CODE::SUCCESS) {
+        print("Camera Open", returned_state, "Exit program.");
+        return EXIT_FAILURE;
+    }
 
     // Print camera information
     auto camera_info = zed.getCameraInformation();
@@ -96,19 +104,22 @@ int main(int argc, char **argv) {
               << camera_info.camera_configuration.resolution.height << std::endl;
     std::cout << "ZED Camera FPS            : " << zed.getInitParameters().camera_fps << std::endl;
 
-    // Open the camera
-    auto returned_state = zed.open(init_parameters);
-    if (returned_state != sl::ERROR_CODE::SUCCESS) {
-        print("Camera Open", returned_state, "Exit program.");
-        return EXIT_FAILURE;
-    }
 
+#ifndef HAVE_CUDA
     // Create a sl::Mat object (4 channels of type unsigned char) to store the image.
     sl::Mat zed_image(camera_info.camera_configuration.resolution.height,
                       camera_info.camera_configuration.resolution.width, sl::MAT_TYPE::U8_C4);
-
     // Create an OpenCV Mat that shares sl::Mat data
     cv::Mat image_ocv = slMat2cvMat(zed_image);
+#else
+    // Create a sl::Mat object (4 channels of type unsigned char) to store the image.
+    sl::Mat zed_image(camera_info.camera_configuration.resolution.width,
+                      camera_info.camera_configuration.resolution.height, sl::MAT_TYPE::U8_C4, sl::MEM::CPU);
+    // Create an OpenCV Mat that shares sl::Mat data
+    cv::Mat image_ocv = slMat2cvMat(zed_image);
+    cv::Mat gray;
+#endif
+
     cv::Mat blob;
 
 
@@ -124,6 +135,7 @@ int main(int argc, char **argv) {
             image_ocv = cv::Mat((int) zed_image.getHeight(), (int) zed_image.getWidth(), CV_8UC4,
                                 zed_image.getPtr<sl::uchar1>(sl::MEM::CPU));
             cv::cvtColor(image_ocv, image_ocv, cv::COLOR_RGBA2RGB);
+//            gpu_image_ocv.upload(gray);
             // Create a 4D blob from a frame.
             cv::dnn::blobFromImage(image_ocv, blob, 1 / 255.0, cv::Size(inpWidth, inpHeight), cv::Scalar(0, 0, 0), true,
                                    false);
@@ -144,9 +156,9 @@ int main(int argc, char **argv) {
             std::string label = cv::format("Inference time for a frame : %.2f ms", t);
             cv::putText(image_ocv, label, cv::Point(0, 15), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255));
 
-            // Write the frame with the detection boxes
-            cv::Mat detectedFrame;
-            image_ocv.convertTo(detectedFrame, CV_8U);
+//            // Write the frame with the detection boxes
+//            cv::Mat detectedFrame;
+//            image_ocv.convertTo(detectedFrame, CV_8U);
 
             //Display the image
             cv::imshow("YOLO DETECTION", image_ocv);
