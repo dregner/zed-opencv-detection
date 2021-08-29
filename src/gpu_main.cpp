@@ -12,16 +12,15 @@
 #include <opencv2/dnn.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp>
+#include <opencv2/cudaarithm.hpp>
 #include <opencv2/cudaimgproc.hpp>
+#include <opencv2/cudawarping.hpp>
+#include <opencv2/cudaoptflow.hpp>
 
 
-cv::Mat slMat2cvMat(sl::Mat &input);
 
-#ifdef HAVE_CUDA
 
 cv::cuda::GpuMat slMat2cvMatGPU(sl::Mat &input);
-
-#endif // HAVE_CUDA
 
 // Initialize the parameters
 float confThreshold = 0.5; // Confidence threshold
@@ -32,10 +31,10 @@ std::vector<std::string> classes;
 
 
 // Remove the bounding boxes with low confidence using non-maxima suppression
-void postprocess(cv::Mat &frame, const std::vector<cv::Mat> &out);
+void postprocess(cv::cuda::GpuMat &frame, const std::vector<cv::Mat> &out);
 
 // Draw the predicted bounding box
-void drawPred(int classId, float conf, int left, int top, int right, int bottom, cv::Mat &frame);
+void drawPred(int classId, float conf, int left, int top, int right, int bottom, cv::cuda::GpuMat &frame);
 
 // Get the names of the output layers
 std::vector<cv::String> getOutputsNames(const cv::dnn::Net &net);
@@ -105,20 +104,14 @@ int main(int argc, char **argv) {
     std::cout << "ZED Camera FPS            : " << zed.getInitParameters().camera_fps << std::endl;
 
 
-#ifndef HAVE_CUDA
-    // Create a sl::Mat object (4 channels of type unsigned char) to store the image.
-    sl::Mat zed_image(camera_info.camera_configuration.resolution.height,
-                      camera_info.camera_configuration.resolution.width, sl::MAT_TYPE::U8_C4);
-    // Create an OpenCV Mat that shares sl::Mat data
-    cv::Mat image_ocv = slMat2cvMat(zed_image);
-#else
+
     // Create a sl::Mat object (4 channels of type unsigned char) to store the image.
     sl::Mat zed_image(camera_info.camera_configuration.resolution.width,
-                      camera_info.camera_configuration.resolution.height, sl::MAT_TYPE::U8_C4, sl::MEM::CPU);
+                      camera_info.camera_configuration.resolution.height, sl::MAT_TYPE::U8_C4, sl::MEM::GPU);
     // Create an OpenCV Mat that shares sl::Mat data
-    cv::Mat image_ocv = slMat2cvMat(zed_image);
-    cv::Mat gray;
-#endif
+    cv::cuda::GpuMat image_ocv = slMat2cvMatGPU(zed_image);
+
+
 
     cv::Mat blob;
 
@@ -130,14 +123,15 @@ int main(int argc, char **argv) {
         returned_state = zed.grab();
         if (returned_state == sl::ERROR_CODE::SUCCESS) {
             // Retrieve left image
-            zed.retrieveImage(zed_image, sl::VIEW::LEFT);
+            zed.retrieveImage(zed_image, sl::VIEW::LEFT, sl::MEM::GPU);
 
-            image_ocv = cv::Mat((int) zed_image.getHeight(), (int) zed_image.getWidth(), CV_8UC4,
-                                zed_image.getPtr<sl::uchar1>(sl::MEM::CPU));
-            cv::cvtColor(image_ocv, image_ocv, cv::COLOR_RGBA2RGB);
-//            gpu_image_ocv.upload(gray);
+            image_ocv = cv::cuda::GpuMat((int) zed_image.getHeight(), (int) zed_image.getWidth(), CV_8UC4,
+                                zed_image.getPtr<sl::uchar1>(sl::MEM::GPU));
+            cv::cuda::cvtColor(image_ocv, image_ocv, cv::COLOR_RGBA2RGB);
+            cv::Mat blobfromimage;
+            image_ocv.download(blobfromimage);
             // Create a 4D blob from a frame.
-            cv::dnn::blobFromImage(image_ocv, blob, 1 / 255.0, cv::Size(inpWidth, inpHeight), cv::Scalar(0, 0, 0), true,
+            cv::dnn::blobFromImage(blobfromimage, blob, 1 / 255.0, cv::Size(inpWidth, inpHeight), cv::Scalar(0, 0, 0), true,
                                    false);
 
             //Sets the input to the network
@@ -154,14 +148,13 @@ int main(int argc, char **argv) {
             double freq = cv::getTickFrequency() / 1000;
             double t = net.getPerfProfile(layersTimes) / freq;
             std::string label = cv::format("Inference time for a frame : %.2f ms", t);
-            cv::putText(image_ocv, label, cv::Point(0, 15), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255));
-
-//            // Write the frame with the detection boxes
-//            cv::Mat detectedFrame;
-//            image_ocv.convertTo(detectedFrame, CV_8U);
+            // Write the frame with the detection boxes
+            cv::Mat detectedFrame;
+            image_ocv.download(detectedFrame);
+            cv::putText(detectedFrame, label, cv::Point(0, 15), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255));
 
             //Display the image
-            cv::imshow("YOLO DETECTION", image_ocv);
+            cv::imshow("YOLO DETECTION", detectedFrame);
         } else {
             print("Error during capture : ", returned_state);
             break;
@@ -228,7 +221,7 @@ int getOCVtype(sl::MAT_TYPE type) {
 }
 
 // Remove the bounding boxes with low confidence using non-maxima suppression
-void postprocess(cv::Mat &frame, const std::vector<cv::Mat> &outs) {
+void postprocess(cv::cuda::GpuMat &frame, const std::vector<cv::Mat> &outs) {
     std::vector<int> classIds;
     std::vector<float> confidences;
     std::vector<cv::Rect> boxes;
@@ -243,7 +236,7 @@ void postprocess(cv::Mat &frame, const std::vector<cv::Mat> &outs) {
             cv::Point classIdPoint;
             double confidence;
             // Get the value and location of the maximum score
-            minMaxLoc(scores, 0, &confidence, 0, &classIdPoint);
+            cv::cuda::minMaxLoc(scores, 0, &confidence, 0, &classIdPoint);
             if (confidence > confThreshold) {
                 int centerX = (int) (data[0] * frame.cols);
                 int centerY = (int) (data[1] * frame.rows);
@@ -272,10 +265,11 @@ void postprocess(cv::Mat &frame, const std::vector<cv::Mat> &outs) {
 }
 
 // Draw the predicted bounding box
-void drawPred(int classId, float conf, int left, int top, int right, int bottom, cv::Mat &frame) {
+void drawPred(int classId, float conf, int left, int top, int right, int bottom, cv::cuda::GpuMat &frame) {
     //Draw a rectangle displaying the bounding box
-    rectangle(frame, cv::Point(left, top), cv::Point(right, bottom), cv::Scalar(255, 178, 50), 3);
-
+    cv::Mat cpu_frame;
+    frame.download(cpu_frame);
+    cv::rectangle(cpu_frame, cv::Point(left, top), cv::Point(right, bottom), cv::Scalar(255, 178, 50), 3);
     //Get the label for the class name and its confidence
     std::string label = cv::format("%.2f", conf);
     if (!classes.empty()) {
@@ -287,9 +281,10 @@ void drawPred(int classId, float conf, int left, int top, int right, int bottom,
     int baseLine;
     cv::Size labelSize = getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
     top = cv::max(top, labelSize.height);
-    rectangle(frame, cv::Point(left, top - round(1.5 * labelSize.height)),
+    rectangle(cpu_frame, cv::Point(left, top - round(1.5 * labelSize.height)),
               cv::Point(left + round(1.5 * labelSize.width), top + baseLine), cv::Scalar(255, 255, 255), cv::FILLED);
     putText(frame, label, cv::Point(left, top), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 0), 1);
+    frame.upload(cpu_frame);
 }
 
 // Get the names of the output layers
@@ -313,18 +308,6 @@ std::vector<cv::String> getOutputsNames(const cv::dnn::Net &net) {
 /**
 * Conversion function between sl::Mat and cv::Mat
 **/
-cv::Mat slMat2cvMat(sl::Mat &input) {
-    // Since cv::Mat data requires a uchar* pointer, we get the uchar1 pointer from sl::Mat (getPtr<T>())
-    // cv::Mat and sl::Mat will share a single memory structure
-    return cv::Mat(input.getHeight(), input.getWidth(), getOCVtype(input.getDataType()),
-                   input.getPtr<sl::uchar1>(sl::MEM::CPU), input.getStepBytes(sl::MEM::CPU));
-}
-
-#ifdef HAVE_CUDA
-
-/**
-* Conversion function between sl::Mat and cv::Mat
-**/
 cv::cuda::GpuMat slMat2cvMatGPU(sl::Mat &input) {
     // Since cv::Mat data requires a uchar* pointer, we get the uchar1 pointer from sl::Mat (getPtr<T>())
     // cv::Mat and sl::Mat will share a single memory structure
@@ -332,4 +315,3 @@ cv::cuda::GpuMat slMat2cvMatGPU(sl::Mat &input) {
                             input.getPtr<sl::uchar1>(sl::MEM::GPU), input.getStepBytes(sl::MEM::GPU));
 }
 
-#endif
