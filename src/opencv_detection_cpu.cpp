@@ -26,8 +26,8 @@ cv::cuda::GpuMat slMat2cvMatGPU(sl::Mat &input);
 // Initialize the parameters
 float confThreshold = 0.5; // Confidence threshold
 float nmsThreshold = 0.4;  // Non-maximum suppression threshold
-int inpWidth = 416;        // Width of network's input image
-int inpHeight = 416;       // Height of network's input image
+int inpWidth = 256;        // Width of network's input image
+int inpHeight = 256;       // Height of network's input image
 std::vector<std::string> classes;
 
 
@@ -116,8 +116,7 @@ int main(int argc, char **argv) {
     sl::Mat zed_image(camera_info.camera_configuration.resolution.width,
                       camera_info.camera_configuration.resolution.height, sl::MAT_TYPE::U8_C4, sl::MEM::CPU);
     // Create an OpenCV Mat that shares sl::Mat data
-    cv::Mat image_ocv = slMat2cvMat(zed_image);
-    cv::Mat gray;
+    cv::Mat image_ocv;
 #endif
 
     cv::Mat blob;

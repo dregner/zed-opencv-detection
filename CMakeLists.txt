@@ -26,10 +26,14 @@ link_directories(${ZED_LIBRARY_DIR})
 link_directories(${OpenCV_LIBRARY_DIRS})
 link_directories(${CUDA_LIBRARY_DIRS})
 
-add_executable(cpu-detection src/cpu_main.cpp)
+add_executable(cpu-detection src/opencv_detection_cpu.cpp)
 add_definitions(-std=c++14 -O3)
-ADD_EXECUTABLE(gpu-detection src/gpu_main.cpp)
+ADD_EXECUTABLE(gpu-detection src/opencv_detection_gpu.cpp)
 add_definitions(-std=c++14 -O3)
+ADD_EXECUTABLE(dist-detection src/opencv_detection_position.cpp)
+add_definitions(-std=c++14 -O3)
+
+
 if (LINK_SHARED_ZED)
     SET(ZED_LIBS ${ZED_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${CUDA_CUDART_LIBRARY})
 else()
@@ -38,6 +42,7 @@ endif()
 
 TARGET_LINK_LIBRARIES(cpu-detection ${ZED_LIBS} ${OpenCV_LIBRARIES})
 TARGET_LINK_LIBRARIES(gpu-detection ${ZED_LIBS} ${OpenCV_LIBRARIES})
+TARGET_LINK_LIBRARIES(dist-detection ${ZED_LIBS} ${OpenCV_LIBRARIES})
 
 
 if(INSTALL_SAMPLES)
