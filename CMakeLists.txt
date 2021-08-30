@@ -26,7 +26,7 @@ link_directories(${ZED_LIBRARY_DIR})
 link_directories(${OpenCV_LIBRARY_DIRS})
 link_directories(${CUDA_LIBRARY_DIRS})
 
-add_executable(cpu-detection src/main.cpp)
+add_executable(cpu-detection src/cpu_main.cpp)
 add_definitions(-std=c++14 -O3)
 ADD_EXECUTABLE(gpu-detection src/gpu_main.cpp)
 add_definitions(-std=c++14 -O3)

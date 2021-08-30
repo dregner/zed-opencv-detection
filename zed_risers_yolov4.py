@@ -14,13 +14,13 @@ camera_settings = sl.VIDEO_SETTINGS.BRIGHTNESS
 str_camera_settings = "BRIGHTNESS"
 step_camera_settings = 1
 
-net_yolov4 = cv2.dnn.readNet('yolo_params/weights/yolov4_risers_final.weights', 'yolo_params/cfg/yolov4_risers.cfg')
+net_yolov4 = cv2.dnn.readNet('yolo_params/weights/yolov4_risers.weights', 'yolo_params/cfg/yolov4_risers.cfg')
 net_yolov4.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
 net_yolov4.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
 
 
 class_names = []
-coconames='yolo_params/cfg/coco.names'
+coconames='yolo_params/cfg/coco_risers.names'
 with open(coconames,'rt') as f:
     class_names = f.read().rstrip('\n').split('\n')
     
