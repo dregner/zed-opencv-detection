@@ -5,8 +5,10 @@
 // ZED include
 #include <sl/Camera.hpp>
 
+// OpenCV includes
+#include <opencv2/opencv.hpp>
 // OpenCV dep
-
+#include <opencv2/cvconfig.h>
 #include <opencv2/dnn.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp>
@@ -14,19 +16,22 @@
 #include <opencv2/cudaimgproc.hpp>
 
 
+
+cv::cuda::GpuMat slMat2cvMatGPU(sl::Mat &input);
+
 // Initialize the parameters
 float confThreshold = 0.5; // Confidence threshold
 float nmsThreshold = 0.4;  // Non-maximum suppression threshold
-int inpWidth = 256;        // Width of network's input image
-int inpHeight = 256;       // Height of network's input image
+int inpWidth = 416;        // Width of network's input image
+int inpHeight = 416;       // Height of network's input image
 std::vector<std::string> classes;
 
 
 // Remove the bounding boxes with low confidence using non-maxima suppression
-void postprocess(cv::Mat &frame, const std::vector<cv::Mat> &out);
+void postprocess(cv::Mat &frame, const std::vector<cv::Mat> &out, sl::Mat &deppth);
 
 // Draw the predicted bounding box
-void drawPred(int classId, float conf, int left, int top, int right, int bottom,sl::Mat depth, cv::Mat &frame);
+void drawPred(int classId, float conf, int left, int top, int right, int bottom, cv::Mat &frame, float distance);
 
 // Get the names of the output layers
 std::vector<cv::String> getOutputsNames(const cv::dnn::Net &net);
@@ -46,40 +51,37 @@ int main(int argc, char **argv) {
     /// Initializing YOLO DETECTION
 
     // Load names of classes
-    std::string classesFile = "/home/regner/zed-opencv-detection/yolo_params/cfg/coco.names";
+    std::string classesFile = "/home/nvidia/zed-opencv-detection/yolo_params/cfg/coco_risers.names";
     std::ifstream ifs(classesFile.c_str());
     std::string line;
     while (getline(ifs, line)) classes.push_back(line);
 
     // Give the configuration and weight files for the model
-    cv::String modelConfiguration = "/home/regner/zed-opencv-detection/yolo_params/cfg/yolov4.cfg";
-    cv::String modelWeights = "/home/regner/zed-opencv-detection/yolo_params/weights/yolov4.weights";
+    cv::String modelConfiguration = "/home/nvidia/zed-opencv-detection/yolo_params/cfg/yolov4_risers.cfg";
+    cv::String modelWeights = "/home/nvidia/zed-opencv-detection/yolo_params/weights/yolov4_risers.weights";
 
     // Load the network
     cv::dnn::Net net = cv::dnn::readNetFromDarknet(modelConfiguration, modelWeights);
     net.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
     net.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
+
     /// INITIALIZING ZED CAM
     // Create a ZED Camera object
     sl::Camera zed;
 
     sl::InitParameters init_parameters;
-    init_parameters.sdk_verbose = false;
+    init_parameters.sdk_verbose = true;
     init_parameters.camera_resolution = sl::RESOLUTION::HD720;
     init_parameters.camera_fps = 60;
     init_parameters.depth_mode = sl::DEPTH_MODE::PERFORMANCE;
-    init_parameters.coordinate_units = sl::UNIT::METER; // Use millimeter units (for depth measurements)
-
+    init_parameters.coordinate_units = sl::UNIT::METER; // Use meter units (for depth measurements)
+    
 
     // Open the camera
-    auto returned_state = zed.open(init_parameters);
-    if (returned_state != sl::ERROR_CODE::SUCCESS) {
-        print("Camera Open", returned_state, "Exit program.");
+    if (zed.open(init_parameters) != sl::ERROR_CODE::SUCCESS) {
+        //print("Camera Open", returned_state, "Exit program.");
         return EXIT_FAILURE;
     }
-    // Set runtime parameters after opening the camera
-    sl::RuntimeParameters runtime_parameters;
-    runtime_parameters.sensing_mode = sl::SENSING_MODE::STANDARD; // Use STANDARD sensing mode
 
     // Print camera information
     auto camera_info = zed.getCameraInformation();
@@ -93,32 +95,33 @@ int main(int argc, char **argv) {
     std::cout << "ZED Camera FPS            : " << zed.getInitParameters().camera_fps << std::endl;
 
 
-    /// Create a sl::Mat object (4 channels of type unsigned char) to store the image.
+
+    // Create a sl::Mat object (4 channels of type unsigned char) to store the image.
     sl::Mat zed_image(camera_info.camera_configuration.resolution.width,
-                      camera_info.camera_configuration.resolution.height, sl::MAT_TYPE::U8_C4,
-                      sl::MEM::GPU);
-    cv::cuda::GpuMat image_ocv_gpu;
-/// Create an OpenCV Mat that shares sl::Mat data
-    cv::Mat image_ocv, blob, depth_ocv;
+                      camera_info.camera_configuration.resolution.height, sl::MAT_TYPE::U8_C4, sl::MEM::GPU);
+    // Create an OpenCV Mat that shares sl::Mat data
+    cv::cuda::GpuMat image_ocv = slMat2cvMatGPU(zed_image);
     sl::Mat depth;
 
-    /// Capture new images until 'q' is pressed
+    cv::Mat blob, blobfromimage_mat;
+
+
+    // Capture new images until 'q' is pressed
     char key = ' ';
     while (key != 'q') {
         // Check that a new image is successfully acquired
         if (zed.grab() == sl::ERROR_CODE::SUCCESS) {
             // Retrieve left image
             zed.retrieveImage(zed_image, sl::VIEW::LEFT, sl::MEM::GPU);
-            image_ocv_gpu = cv::cuda::GpuMat((int) zed_image.getHeight(), (int) zed_image.getWidth(), CV_8UC4,
-                                             zed_image.getPtr<sl::uchar1>(sl::MEM::GPU));
-            cv::cuda::cvtColor(image_ocv_gpu, image_ocv_gpu, cv::COLOR_RGBA2RGB);
-            image_ocv_gpu.download(image_ocv);
 
-
-            // Retrieve measure from depth image
+            image_ocv = cv::cuda::GpuMat((int) zed_image.getHeight(), (int) zed_image.getWidth(), CV_8UC4,
+                                         zed_image.getPtr<sl::uchar1>(sl::MEM::GPU));
+            cv::cuda::cvtColor(image_ocv, image_ocv, cv::COLOR_RGBA2RGB);
+            // Retrieve depth measure
             zed.retrieveMeasure(depth, sl::MEASURE::DEPTH, sl::MEM::CPU);
+            image_ocv.download(blobfromimage_mat);
             // Create a 4D blob from a frame.
-            cv::dnn::blobFromImage(image_ocv, blob, 1 / 255.0, cv::Size(inpWidth, inpHeight), cv::Scalar(0, 0, 0),
+            cv::dnn::blobFromImage(blobfromimage_mat, blob, 1 / 255.0, cv::Size(inpWidth, inpHeight), cv::Scalar(0, 0, 0),
                                    true,
                                    false);
 
@@ -128,93 +131,30 @@ int main(int argc, char **argv) {
             // Runs the forward pass to get output of the output layers
             std::vector<cv::Mat> outs;
             net.forward(outs, getOutputsNames(net));
+
             // Remove the bounding boxes with low confidence
-            std::vector<int> classIds;
-            std::vector<float> confidences;
-            std::vector<cv::Rect> boxes;
-
-            for (size_t i = 0; i < outs.size(); ++i) {
-                // Scan through all the bounding boxes output from the network and keep only the
-                // ones with high confidence scores. Assign the box's class label as the class
-                // with the highest score for the box.
-                float *data = (float *) outs[i].data;
-                for (int j = 0; j < outs[i].rows; ++j, data += outs[i].cols) {
-                    cv::Mat scores = outs[i].row(j).colRange(5, outs[i].cols);
-                    cv::Point classIdPoint;
-                    double confidence;
-                    // Get the value and location of the maximum score
-                    cv::minMaxLoc(scores, 0, &confidence, 0, &classIdPoint);
-                    if (confidence > confThreshold) {
-                        int centerX = (int) (data[0] * image_ocv.cols);
-                        int centerY = (int) (data[1] * image_ocv.rows);
-                        int width = (int) (data[2] * image_ocv.cols);
-                        int height = (int) (data[3] * image_ocv.rows);
-                        int left = centerX - width / 2;
-                        int top = centerY - height / 2;
-
-                        classIds.push_back(classIdPoint.x);
-                        confidences.push_back((float) confidence);
-                        boxes.push_back(cv::Rect(left, top, width, height));
-                    }
-                }
-            }
-
-            // Perform non maximum suppression to eliminate redundant overlapping boxes with
-            // lower confidences
-            std::vector<int> indices;
-            cv::dnn::NMSBoxes(boxes, confidences, confThreshold, nmsThreshold, indices);
-            for (size_t i = 0; i < indices.size(); ++i) {
-                int idx = indices[i];
-                cv::Rect box = boxes[idx];
-
-                //Draw a rectangle displaying the bounding box
-                rectangle(image_ocv, cv::Point(box.x, box.y), cv::Point(box.x + box.width, box.y + box.height), cv::Scalar(255, 178, 50), 3);
-                //Point(left, top), Point(right, bottom)
-                //Get the label for the class name and its confidence
-                std::string label = cv::format("%.2f", confidences[idx]);
-                if (!classes.empty()) {
-                    CV_Assert(classIds[idx] < (int) classes.size());
-                    label = classes[idx] + ":" + label;
-                    if (classIds[idx] == 0) {
-                        float depth_value = 0;
-                        depth.getValue(box.x+box.width/2, box.y+box.height/2, &depth_value);
-                        std::string depth_label = cv::format("%.2f", depth_value);
-                        label = classes[classIds[idx]] + ":" + label + " - " + depth_label + " m";
-                    } else {
-                        label = classes[classIds[idx]] + ":" + label;
-                    }
-                }
-
-                //Display the label at the top of the bounding box
-                int baseLine;
-                cv::Size labelSize = getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
-                int top = cv::max(box.y, labelSize.height);
-                rectangle(image_ocv, cv::Point(box.x, top - round(1.5 * labelSize.height)),
-                          cv::Point(box.x + round(1.5 * labelSize.width), top + baseLine), cv::Scalar(255, 255, 255), cv::FILLED);
-                putText(image_ocv, label, cv::Point(box.x, top), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 0), 1);
-            }
-
-
+            postprocess(blobfromimage_mat, outs, depth);
             // Put efficiency information. The function getPerfProfile returns the overall time for inference(t) and the timings for each of the layers(in layersTimes)
             std::vector<double> layersTimes;
             double freq = cv::getTickFrequency() / 1000;
             double t = net.getPerfProfile(layersTimes) / freq;
             std::string label = cv::format("Inference time for a frame : %.2f ms", t);
-            cv::putText(image_ocv, label, cv::Point(0, 15), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255));
-            cv::imshow("Depth detection", image_ocv);
+            cv::putText(blobfromimage_mat, label, cv::Point(0, 15), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255));
+
+            //Display the image
+            cv::imshow("YOLO DETECTION", blobfromimage_mat);
         } else {
-            print("Error during capture : ", returned_state);
+            //print("Error during capture : ", returned_state);
             break;
         }
 
         key = cv::waitKey(10);
+        // Change camera settings with keyboard
+//        updateCameraSettings(key, zed);
     }
 
-        // Exit
-    zed.
-
-            close();
-
+    // Exit
+    zed.close();
     return EXIT_SUCCESS;
 }
 
@@ -233,59 +173,6 @@ void print(std::string msg_prefix, sl::ERROR_CODE err_code, std::string msg_suff
         std::cout << " " << msg_suffix;
     std::cout << std::endl;
 }
-
-// Remove the bounding boxes with low confidence using non-maxima suppression
-void postprocess(cv::Mat &frame, const std::vector<cv::Mat> &outs) {
-
-}
-
-// Draw the predicted bounding box
-void drawPred(int classId, float conf, int left, int top, int right, int bottom, sl::Mat depth, cv::Mat &frame) {
-    //Draw a rectangle displaying the bounding box
-    rectangle(frame, cv::Point(left, top), cv::Point(right, bottom), cv::Scalar(255, 178, 50), 3);
-
-    //Get the label for the class name and its confidence
-    std::string label = cv::format("%.2f", conf);
-    if (!classes.empty()) {
-        CV_Assert(classId < (int) classes.size());
-        label = classes[classId] + ":" + label;
-        if (classId == 0) {
-            float depth_value = 0;
-            depth.getValue((left+top)/2, (right+bottom)/2, &depth_value);
-            std::string depth_label = cv::format("%.2f", depth_value);
-            label = classes[classId] + ":" + label + " - " + depth_label + " m";
-        } else {
-            label = classes[classId] + ":" + label;
-        }
-    }
-
-    //Display the label at the top of the bounding box
-    int baseLine;
-    cv::Size labelSize = getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
-    top = cv::max(top, labelSize.height);
-    rectangle(frame, cv::Point(left, top - round(1.5 * labelSize.height)),
-              cv::Point(left + round(1.5 * labelSize.width), top + baseLine), cv::Scalar(255, 255, 255), cv::FILLED);
-    putText(frame, label, cv::Point(left, top), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 0), 1);
-}
-
-// Get the names of the output layers
-std::vector<cv::String> getOutputsNames(const cv::dnn::Net &net) {
-    static std::vector<cv::String> names;
-    if (names.empty()) {
-        //Get the indices of the output layers, i.e. the layers with unconnected outputs
-        std::vector<int> outLayers = net.getUnconnectedOutLayers();
-
-        //get the names of all the layers in the network
-        std::vector<cv::String> layersNames = net.getLayerNames();
-
-        // Get the names of the output layers in names
-        names.resize(outLayers.size());
-        for (size_t i = 0; i < outLayers.size(); ++i)
-            names[i] = layersNames[outLayers[i] - 1];
-    }
-    return names;
-}
-
 
 // Mapping between MAT_TYPE and CV_TYPE
 int getOCVtype(sl::MAT_TYPE type) {
@@ -320,6 +207,106 @@ int getOCVtype(sl::MAT_TYPE type) {
     }
     return cv_type;
 }
+
+// Remove the bounding boxes with low confidence using non-maxima suppression
+void postprocess(cv::Mat &frame, const std::vector<cv::Mat> &outs, sl::Mat &depth) {
+    std::vector<int> classIds;
+    std::vector<float> confidences;
+    std::vector<cv::Rect> boxes;
+
+    for (size_t i = 0; i < outs.size(); ++i) {
+        // Scan through all the bounding boxes output from the network and keep only the
+        // ones with high confidence scores. Assign the box's class label as the class
+        // with the highest score for the box.
+        float *data = (float *) outs[i].data;
+        for (int j = 0; j < outs[i].rows; ++j, data += outs[i].cols) {
+            cv::Mat scores = outs[i].row(j).colRange(5, outs[i].cols);
+            cv::Point classIdPoint;
+            double confidence;
+            // Get the value and location of the maximum score
+            cv::minMaxLoc(scores, 0, &confidence, 0, &classIdPoint);
+            if (confidence > confThreshold) {
+                int centerX = (int) (data[0] * frame.cols);
+                int centerY = (int) (data[1] * frame.rows);
+                int width = (int) (data[2] * frame.cols);
+                int height = (int) (data[3] * frame.rows);
+                int left = centerX - width / 2;
+                int top = centerY - height / 2;
+
+                classIds.push_back(classIdPoint.x);
+                confidences.push_back((float) confidence);
+                boxes.push_back(cv::Rect(left, top, width, height));
+            }
+        }
+    }
+
+    // Perform non maximum suppression to eliminate redundant overlapping boxes with
+    // lower confidences
+    std::vector<int> indices;
+    cv::dnn::NMSBoxes(boxes, confidences, confThreshold, nmsThreshold, indices);
+    for (size_t i = 0; i < indices.size(); ++i) {
+        int idx = indices[i];
+        cv::Rect box = boxes[idx];
+        float depth_value = 0;
+        depth.getValue(box.x+box.width/2, box.y+box.height/2, &depth_value);
+        drawPred(classIds[idx], confidences[idx], box.x, box.y,
+                 box.x + box.width, box.y + box.height, frame, depth_value);
+        //Get the label for the class name and its confidence
+        std::string label = cv::format("%.2f", confidences[idx]);
+        if (!classes.empty()) {
+            CV_Assert(classIds[idx] < (int) classes.size());
+            label = classes[classIds[idx]] + ":" + label;
+        }
+        std::cout << label << " - Position: [ " << box.x + box.width/2 << " x "<< box.y + box.height/2 <<" ] pixel - " << depth_value << " m" << std::endl;
+    }
+}
+
+// Draw the predicted bounding box
+void drawPred(int classId, float conf, int left, int top, int right, int bottom, cv::Mat &frame, float distance) {
+    //Draw a rectangle displaying the bounding box
+    cv::rectangle(frame, cv::Point(left, top), cv::Point(right, bottom), cv::Scalar(255, 178, 50), 3);
+    //Get the label for the class name and its confidence
+    std::string label = cv::format("%.2f", conf);
+    std::string str_distance = cv::format("%.2f", distance);
+    if (!classes.empty()) {
+        CV_Assert(classId < (int) classes.size());
+        label = classes[classId] + ":" + label + " - " + str_distance + " m";
+    }
+
+    //Display the label at the top of the bounding box
+    int baseLine;
+    cv::Size labelSize = getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
+    top = cv::max(top, labelSize.height);
+    rectangle(frame, cv::Point(left, top - round(1.5 * labelSize.height)),
+              cv::Point(left + round(1.5 * labelSize.width), top + baseLine), cv::Scalar(255, 255, 255), cv::FILLED);
+    putText(frame, label, cv::Point(left, top), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 0), 1);
+}
+
+// Get the names of the output layers
+std::vector<cv::String> getOutputsNames(const cv::dnn::Net &net) {
+    static std::vector<cv::String> names;
+    if (names.empty()) {
+        //Get the indices of the output layers, i.e. the layers with unconnected outputs
+        std::vector<int> outLayers = net.getUnconnectedOutLayers();
+
+        //get the names of all the layers in the network
+        std::vector<cv::String> layersNames = net.getLayerNames();
+
+        // Get the names of the output layers in names
+        names.resize(outLayers.size());
+        for (size_t i = 0; i < outLayers.size(); ++i)
+            names[i] = layersNames[outLayers[i] - 1];
+    }
+    return names;
+}
+
 /**
 * Conversion function between sl::Mat and cv::Mat
 **/
+cv::cuda::GpuMat slMat2cvMatGPU(sl::Mat &input) {
+    // Since cv::Mat data requires a uchar* pointer, we get the uchar1 pointer from sl::Mat (getPtr<T>())
+    // cv::Mat and sl::Mat will share a single memory structure
+    return cv::cuda::GpuMat(input.getHeight(), input.getWidth(), getOCVtype(input.getDataType()),
+                            input.getPtr<sl::uchar1>(sl::MEM::GPU), input.getStepBytes(sl::MEM::GPU));
+}
+

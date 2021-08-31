@@ -51,14 +51,14 @@ int main(int argc, char **argv) {
     /// Initializing YOLO DETECTION
 
     // Load names of classes
-    std::string classesFile = "/home/regner/zed-opencv-detection/yolo_params/cfg/coco.names";
+    std::string classesFile = "/home/nvidia/zed-opencv-detection/yolo_params/cfg/coco.names";
     std::ifstream ifs(classesFile.c_str());
     std::string line;
     while (getline(ifs, line)) classes.push_back(line);
 
     // Give the configuration and weight files for the model
-    cv::String modelConfiguration = "/home/regner/zed-opencv-detection/yolo_params/cfg/yolov4.cfg";
-    cv::String modelWeights = "/home/regner/zed-opencv-detection/yolo_params/weights/yolov4.weights";
+    cv::String modelConfiguration = "/home/nvidia/zed-opencv-detection/yolo_params/cfg/yolov4.cfg";
+    cv::String modelWeights = "/home/nvidia/zed-opencv-detection/yolo_params/weights/yolov4.weights";
 
     // Load the network
     cv::dnn::Net net = cv::dnn::readNetFromDarknet(modelConfiguration, modelWeights);
@@ -245,15 +245,15 @@ void postprocess(cv::Mat &frame, const std::vector<cv::Mat> &outs) {
     for (size_t i = 0; i < indices.size(); ++i) {
         int idx = indices[i];
         cv::Rect box = boxes[idx];
-//        drawPred(classIds[idx], confidences[idx], box.x, box.y,
-//                 box.x + box.width, box.y + box.height, frame);
+        drawPred(classIds[idx], confidences[idx], box.x, box.y,
+                 box.x + box.width, box.y + box.height, frame);
         //Get the label for the class name and its confidence
         std::string label = cv::format("%.2f", confidences[idx]);
         if (!classes.empty()) {
             CV_Assert(classIds[idx] < (int) classes.size());
             label = classes[classIds[idx]] + ":" + label;
         }
-        std::cout << label << " - Position: [" << box.x << " x "<< box.y <<" ] pixel" << std::endl;
+        std::cout << label << " - Position: [ " << box.x << " x "<< box.y <<" ] pixel" << std::endl;
     }
 }
 
