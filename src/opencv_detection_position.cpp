@@ -17,8 +17,6 @@
 
 
 
-cv::cuda::GpuMat slMat2cvMatGPU(sl::Mat &input);
-
 // Initialize the parameters
 float confThreshold = 0.5; // Confidence threshold
 float nmsThreshold = 0.4;  // Non-maximum suppression threshold
@@ -26,6 +24,8 @@ int inpWidth = 416;        // Width of network's input image
 int inpHeight = 416;       // Height of network's input image
 std::vector<std::string> classes;
 
+// Get OCV type based on ZED
+int getOCVtype(sl::MAT_TYPE type);
 
 // Remove the bounding boxes with low confidence using non-maxima suppression
 void postprocess(cv::Mat &frame, const std::vector<cv::Mat> &out, sl::Mat &deppth);
@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
     sl::Camera zed;
 
     sl::InitParameters init_parameters;
-    init_parameters.sdk_verbose = true;
+    init_parameters.sdk_verbose = false;
     init_parameters.camera_resolution = sl::RESOLUTION::HD720;
     init_parameters.camera_fps = 60;
     init_parameters.depth_mode = sl::DEPTH_MODE::PERFORMANCE;
@@ -100,10 +100,11 @@ int main(int argc, char **argv) {
     sl::Mat zed_image(camera_info.camera_configuration.resolution.width,
                       camera_info.camera_configuration.resolution.height, sl::MAT_TYPE::U8_C4, sl::MEM::GPU);
     // Create an OpenCV Mat that shares sl::Mat data
-    cv::cuda::GpuMat image_ocv = slMat2cvMatGPU(zed_image);
+    cv::cuda::GpuMat image_ocv_gpu = cv::cuda::GpuMat(zed_image.getHeight(), zed_image.getWidth(), getOCVtype(zed_image.getDataType()), zed_image.getPtr<sl::uchar1>(sl::MEM::GPU), zed_image.getStepBytes(sl::MEM::GPU));
+
     sl::Mat depth;
 
-    cv::Mat blob, blobfromimage_mat;
+    cv::Mat blob, image_ocv;
 
 
     // Capture new images until 'q' is pressed
@@ -111,17 +112,19 @@ int main(int argc, char **argv) {
     while (key != 'q') {
         // Check that a new image is successfully acquired
         if (zed.grab() == sl::ERROR_CODE::SUCCESS) {
+
             // Retrieve left image
             zed.retrieveImage(zed_image, sl::VIEW::LEFT, sl::MEM::GPU);
 
-            image_ocv = cv::cuda::GpuMat((int) zed_image.getHeight(), (int) zed_image.getWidth(), CV_8UC4,
-                                         zed_image.getPtr<sl::uchar1>(sl::MEM::GPU));
-            cv::cuda::cvtColor(image_ocv, image_ocv, cv::COLOR_RGBA2RGB);
+            image_ocv_gpu = cv::cuda::GpuMat((int) zed_image.getHeight(), (int) zed_image.getWidth(), CV_8UC4, zed_image.getPtr<sl::uchar1>(sl::MEM::GPU));
+            cv::cuda::cvtColor(image_ocv_gpu, image_ocv_gpu, cv::COLOR_RGBA2RGB);
+
             // Retrieve depth measure
             zed.retrieveMeasure(depth, sl::MEASURE::DEPTH, sl::MEM::CPU);
-            image_ocv.download(blobfromimage_mat);
+            image_ocv_gpu.download(image_ocv);
+
             // Create a 4D blob from a frame.
-            cv::dnn::blobFromImage(blobfromimage_mat, blob, 1 / 255.0, cv::Size(inpWidth, inpHeight), cv::Scalar(0, 0, 0),
+            cv::dnn::blobFromImage(image_ocv, blob, 1 / 255.0, cv::Size(inpWidth, inpHeight), cv::Scalar(0, 0, 0),
                                    true,
                                    false);
 
@@ -133,24 +136,21 @@ int main(int argc, char **argv) {
             net.forward(outs, getOutputsNames(net));
 
             // Remove the bounding boxes with low confidence
-            postprocess(blobfromimage_mat, outs, depth);
+            postprocess(image_ocv, outs, depth);
             // Put efficiency information. The function getPerfProfile returns the overall time for inference(t) and the timings for each of the layers(in layersTimes)
             std::vector<double> layersTimes;
             double freq = cv::getTickFrequency() / 1000;
             double t = net.getPerfProfile(layersTimes) / freq;
             std::string label = cv::format("Inference time for a frame : %.2f ms", t);
-            cv::putText(blobfromimage_mat, label, cv::Point(0, 15), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255));
+            cv::putText(image_ocv, label, cv::Point(0, 15), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255));
 
             //Display the image
-            cv::imshow("YOLO DETECTION", blobfromimage_mat);
+            cv::imshow("YOLO DETECTION", image_ocv);
         } else {
-            //print("Error during capture : ", returned_state);
             break;
         }
 
-        key = cv::waitKey(10);
-        // Change camera settings with keyboard
-//        updateCameraSettings(key, zed);
+        key = cv::waitKey(5);
     }
 
     // Exit
@@ -300,13 +300,4 @@ std::vector<cv::String> getOutputsNames(const cv::dnn::Net &net) {
     return names;
 }
 
-/**
-* Conversion function between sl::Mat and cv::Mat
-**/
-cv::cuda::GpuMat slMat2cvMatGPU(sl::Mat &input) {
-    // Since cv::Mat data requires a uchar* pointer, we get the uchar1 pointer from sl::Mat (getPtr<T>())
-    // cv::Mat and sl::Mat will share a single memory structure
-    return cv::cuda::GpuMat(input.getHeight(), input.getWidth(), getOCVtype(input.getDataType()),
-                            input.getPtr<sl::uchar1>(sl::MEM::GPU), input.getStepBytes(sl::MEM::GPU));
-}
 
