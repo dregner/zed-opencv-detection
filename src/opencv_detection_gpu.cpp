@@ -51,14 +51,14 @@ int main(int argc, char **argv) {
     /// Initializing YOLO DETECTION
 
     // Load names of classes
-    std::string classesFile = "/home/nvidia/zed-opencv-detection/yolo_params/cfg/coco.names";
+    std::string classesFile = "/home/vant3d/zed-opencv-detection/yolo_params/cfg/coco.names";
     std::ifstream ifs(classesFile.c_str());
     std::string line;
     while (getline(ifs, line)) classes.push_back(line);
 
     // Give the configuration and weight files for the model
-    cv::String modelConfiguration = "/home/nvidia/zed-opencv-detection/yolo_params/cfg/yolov4.cfg";
-    cv::String modelWeights = "/home/nvidia/zed-opencv-detection/yolo_params/weights/yolov4.weights";
+    cv::String modelConfiguration = "/home/vant3d/zed-opencv-detection/yolo_params/cfg/yolov4.cfg";
+    cv::String modelWeights = "/home/vant3d/zed-opencv-detection/yolo_params/weights/yolov4.weights";
 
     // Load the network
     cv::dnn::Net net = cv::dnn::readNetFromDarknet(modelConfiguration, modelWeights);
