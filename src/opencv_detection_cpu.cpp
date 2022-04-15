@@ -4,24 +4,14 @@
 
 // ZED include
 #include <sl/Camera.hpp>
-
-// OpenCV includes
-#include <opencv2/opencv.hpp>
-// OpenCV dep
 #include <opencv2/cvconfig.h>
 #include <opencv2/dnn.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/cudaimgproc.hpp>
+#include "utils.hpp"
 
 
-cv::Mat slMat2cvMat(sl::Mat &input);
-
-#ifdef HAVE_CUDA
-
-cv::cuda::GpuMat slMat2cvMatGPU(sl::Mat &input);
-
-#endif // HAVE_CUDA
 
 // Initialize the parameters
 float confThreshold = 0.5; // Confidence threshold
@@ -291,44 +281,3 @@ void drawPred(int classId, float conf, int left, int top, int right, int bottom,
     putText(frame, label, cv::Point(left, top), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 0), 1);
 }
 
-// Get the names of the output layers
-std::vector<cv::String> getOutputsNames(const cv::dnn::Net &net) {
-    static std::vector<cv::String> names;
-    if (names.empty()) {
-        //Get the indices of the output layers, i.e. the layers with unconnected outputs
-        std::vector<int> outLayers = net.getUnconnectedOutLayers();
-
-        //get the names of all the layers in the network
-        std::vector<cv::String> layersNames = net.getLayerNames();
-
-        // Get the names of the output layers in names
-        names.resize(outLayers.size());
-        for (size_t i = 0; i < outLayers.size(); ++i)
-            names[i] = layersNames[outLayers[i] - 1];
-    }
-    return names;
-}
-
-/**
-* Conversion function between sl::Mat and cv::Mat
-**/
-cv::Mat slMat2cvMat(sl::Mat &input) {
-    // Since cv::Mat data requires a uchar* pointer, we get the uchar1 pointer from sl::Mat (getPtr<T>())
-    // cv::Mat and sl::Mat will share a single memory structure
-    return cv::Mat(input.getHeight(), input.getWidth(), getOCVtype(input.getDataType()),
-                   input.getPtr<sl::uchar1>(sl::MEM::CPU), input.getStepBytes(sl::MEM::CPU));
-}
-
-#ifdef HAVE_CUDA
-
-/**
-* Conversion function between sl::Mat and cv::Mat
-**/
-cv::cuda::GpuMat slMat2cvMatGPU(sl::Mat &input) {
-    // Since cv::Mat data requires a uchar* pointer, we get the uchar1 pointer from sl::Mat (getPtr<T>())
-    // cv::Mat and sl::Mat will share a single memory structure
-    return cv::cuda::GpuMat(input.getHeight(), input.getWidth(), getOCVtype(input.getDataType()),
-                            input.getPtr<sl::uchar1>(sl::MEM::GPU), input.getStepBytes(sl::MEM::GPU));
-}
-
-#endif

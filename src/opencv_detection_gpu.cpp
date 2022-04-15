@@ -6,15 +6,12 @@
 #include <sl/Camera.hpp>
 
 // OpenCV includes
-#include <opencv2/opencv.hpp>
-// OpenCV dep
-#include <opencv2/cvconfig.h>
 #include <opencv2/dnn.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/cudaarithm.hpp>
 #include <opencv2/cudaimgproc.hpp>
-
+#include "utils.hpp"
 
 
 cv::cuda::GpuMat slMat2cvMatGPU(sl::Mat &input);
@@ -172,39 +169,7 @@ void print(std::string msg_prefix, sl::ERROR_CODE err_code, std::string msg_suff
     std::cout << std::endl;
 }
 
-// Mapping between MAT_TYPE and CV_TYPE
-int getOCVtype(sl::MAT_TYPE type) {
-    int cv_type = -1;
-    switch (type) {
-        case sl::MAT_TYPE::F32_C1:
-            cv_type = CV_32FC1;
-            break;
-        case sl::MAT_TYPE::F32_C2:
-            cv_type = CV_32FC2;
-            break;
-        case sl::MAT_TYPE::F32_C3:
-            cv_type = CV_32FC3;
-            break;
-        case sl::MAT_TYPE::F32_C4:
-            cv_type = CV_32FC4;
-            break;
-        case sl::MAT_TYPE::U8_C1:
-            cv_type = CV_8UC1;
-            break;
-        case sl::MAT_TYPE::U8_C2:
-            cv_type = CV_8UC2;
-            break;
-        case sl::MAT_TYPE::U8_C3:
-            cv_type = CV_8UC3;
-            break;
-        case sl::MAT_TYPE::U8_C4:
-            cv_type = CV_8UC4;
-            break;
-        default:
-            break;
-    }
-    return cv_type;
-}
+
 
 // Remove the bounding boxes with low confidence using non-maxima suppression
 void postprocess(cv::Mat &frame, const std::vector<cv::Mat> &outs) {
@@ -277,31 +242,4 @@ void drawPred(int classId, float conf, int left, int top, int right, int bottom,
     putText(frame, label, cv::Point(left, top), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 0), 1);
 }
 
-// Get the names of the output layers
-std::vector<cv::String> getOutputsNames(const cv::dnn::Net &net) {
-    static std::vector<cv::String> names;
-    if (names.empty()) {
-        //Get the indices of the output layers, i.e. the layers with unconnected outputs
-        std::vector<int> outLayers = net.getUnconnectedOutLayers();
-
-        //get the names of all the layers in the network
-        std::vector<cv::String> layersNames = net.getLayerNames();
-
-        // Get the names of the output layers in names
-        names.resize(outLayers.size());
-        for (size_t i = 0; i < outLayers.size(); ++i)
-            names[i] = layersNames[outLayers[i] - 1];
-    }
-    return names;
-}
-
-/**
-* Conversion function between sl::Mat and cv::Mat
-**/
-cv::cuda::GpuMat slMat2cvMatGPU(sl::Mat &input) {
-    // Since cv::Mat data requires a uchar* pointer, we get the uchar1 pointer from sl::Mat (getPtr<T>())
-    // cv::Mat and sl::Mat will share a single memory structure
-    return cv::cuda::GpuMat(input.getHeight(), input.getWidth(), getOCVtype(input.getDataType()),
-                            input.getPtr<sl::uchar1>(sl::MEM::GPU), input.getStepBytes(sl::MEM::GPU));
-}
 
