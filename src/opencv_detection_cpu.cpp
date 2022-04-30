@@ -124,7 +124,6 @@ int main(int argc, char **argv) {
             image_ocv = cv::Mat((int) zed_image.getHeight(), (int) zed_image.getWidth(), CV_8UC4,
                                 zed_image.getPtr<sl::uchar1>(sl::MEM::CPU));
             cv::cvtColor(image_ocv, image_ocv, cv::COLOR_RGBA2RGB);
-//            gpu_image_ocv.upload(gray);
             // Create a 4D blob from a frame.
             cv::dnn::blobFromImage(image_ocv, blob, 1 / 255.0, cv::Size(inpWidth, inpHeight), cv::Scalar(0, 0, 0), true,
                                    false);
@@ -144,10 +143,6 @@ int main(int argc, char **argv) {
             double t = net.getPerfProfile(layersTimes) / freq;
             std::string label = cv::format("Inference time for a frame : %.2f ms", t);
             cv::putText(image_ocv, label, cv::Point(0, 15), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255));
-
-//            // Write the frame with the detection boxes
-//            cv::Mat detectedFrame;
-//            image_ocv.convertTo(detectedFrame, CV_8U);
 
             //Display the image
             cv::imshow("YOLO DETECTION", image_ocv);
@@ -182,39 +177,6 @@ void print(std::string msg_prefix, sl::ERROR_CODE err_code, std::string msg_suff
     std::cout << std::endl;
 }
 
-// Mapping between MAT_TYPE and CV_TYPE
-int getOCVtype(sl::MAT_TYPE type) {
-    int cv_type = -1;
-    switch (type) {
-        case sl::MAT_TYPE::F32_C1:
-            cv_type = CV_32FC1;
-            break;
-        case sl::MAT_TYPE::F32_C2:
-            cv_type = CV_32FC2;
-            break;
-        case sl::MAT_TYPE::F32_C3:
-            cv_type = CV_32FC3;
-            break;
-        case sl::MAT_TYPE::F32_C4:
-            cv_type = CV_32FC4;
-            break;
-        case sl::MAT_TYPE::U8_C1:
-            cv_type = CV_8UC1;
-            break;
-        case sl::MAT_TYPE::U8_C2:
-            cv_type = CV_8UC2;
-            break;
-        case sl::MAT_TYPE::U8_C3:
-            cv_type = CV_8UC3;
-            break;
-        case sl::MAT_TYPE::U8_C4:
-            cv_type = CV_8UC4;
-            break;
-        default:
-            break;
-    }
-    return cv_type;
-}
 
 // Remove the bounding boxes with low confidence using non-maxima suppression
 void postprocess(cv::Mat &frame, const std::vector<cv::Mat> &outs) {

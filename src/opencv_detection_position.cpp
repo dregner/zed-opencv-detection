@@ -14,7 +14,7 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/cudaarithm.hpp>
 #include <opencv2/cudaimgproc.hpp>
-
+#include <utils.hpp>
 
 
 // Initialize the parameters
@@ -75,7 +75,7 @@ int main(int argc, char **argv) {
     init_parameters.camera_fps = 60;
     init_parameters.depth_mode = sl::DEPTH_MODE::PERFORMANCE;
     init_parameters.coordinate_units = sl::UNIT::METER; // Use meter units (for depth measurements)
-    
+
 
     // Open the camera
     if (zed.open(init_parameters) != sl::ERROR_CODE::SUCCESS) {
@@ -100,8 +100,7 @@ int main(int argc, char **argv) {
     sl::Mat zed_image(camera_info.camera_configuration.resolution.width,
                       camera_info.camera_configuration.resolution.height, sl::MAT_TYPE::U8_C4, sl::MEM::GPU);
     // Create an OpenCV Mat that shares sl::Mat data
-    cv::cuda::GpuMat image_ocv_gpu = cv::cuda::GpuMat(zed_image.getHeight(), zed_image.getWidth(), getOCVtype(zed_image.getDataType()), zed_image.getPtr<sl::uchar1>(sl::MEM::GPU), zed_image.getStepBytes(sl::MEM::GPU));
-
+    cv::cuda::GpuMat image_ocv_gpu =    slMat2cvMatGPU(zed_image);
     sl::Mat depth;
 
     cv::Mat blob, image_ocv;
@@ -172,40 +171,6 @@ void print(std::string msg_prefix, sl::ERROR_CODE err_code, std::string msg_suff
     if (!msg_suffix.empty())
         std::cout << " " << msg_suffix;
     std::cout << std::endl;
-}
-
-// Mapping between MAT_TYPE and CV_TYPE
-int getOCVtype(sl::MAT_TYPE type) {
-    int cv_type = -1;
-    switch (type) {
-        case sl::MAT_TYPE::F32_C1:
-            cv_type = CV_32FC1;
-            break;
-        case sl::MAT_TYPE::F32_C2:
-            cv_type = CV_32FC2;
-            break;
-        case sl::MAT_TYPE::F32_C3:
-            cv_type = CV_32FC3;
-            break;
-        case sl::MAT_TYPE::F32_C4:
-            cv_type = CV_32FC4;
-            break;
-        case sl::MAT_TYPE::U8_C1:
-            cv_type = CV_8UC1;
-            break;
-        case sl::MAT_TYPE::U8_C2:
-            cv_type = CV_8UC2;
-            break;
-        case sl::MAT_TYPE::U8_C3:
-            cv_type = CV_8UC3;
-            break;
-        case sl::MAT_TYPE::U8_C4:
-            cv_type = CV_8UC4;
-            break;
-        default:
-            break;
-    }
-    return cv_type;
 }
 
 // Remove the bounding boxes with low confidence using non-maxima suppression
@@ -282,22 +247,5 @@ void drawPred(int classId, float conf, int left, int top, int right, int bottom,
     putText(frame, label, cv::Point(left, top), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 0), 1);
 }
 
-// Get the names of the output layers
-std::vector<cv::String> getOutputsNames(const cv::dnn::Net &net) {
-    static std::vector<cv::String> names;
-    if (names.empty()) {
-        //Get the indices of the output layers, i.e. the layers with unconnected outputs
-        std::vector<int> outLayers = net.getUnconnectedOutLayers();
-
-        //get the names of all the layers in the network
-        std::vector<cv::String> layersNames = net.getLayerNames();
-
-        // Get the names of the output layers in names
-        names.resize(outLayers.size());
-        for (size_t i = 0; i < outLayers.size(); ++i)
-            names[i] = layersNames[outLayers[i] - 1];
-    }
-    return names;
-}
 
 

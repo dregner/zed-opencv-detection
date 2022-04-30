@@ -25,7 +25,7 @@ find_package(OpenCV REQUIRED)
 find_package(CUDA ${ZED_CUDA_VERSION} EXACT REQUIRED)
 find_package(GLUT REQUIRED)
 find_package(GLEW REQUIRED)
-find_package(OpenGL REQUIRED)
+#find_package(OpenGL REQUIRED)
 
 
 IF (NOT WIN32)
@@ -64,7 +64,9 @@ add_definitions(-std=c++14 -O3)
 ADD_EXECUTABLE(dist-detection src/opencv_detection_position.cpp)
 add_definitions(-std=c++14 -O3)
 
-cuda_add_executable(yolov5-detection ${HDR_FILES} src/yolov5.cpp src/yololayer.cu src/calibrator.cpp src/GLViewer.cpp)
+cuda_add_executable(yolov5-detection ${HDR_FILES} src/yolov5.cpp src/yololayer.cu )
+add_definitions(-std=c++14 -g -O3 -D_MWAITXINTRIN_H_INCLUDED -Wno-deprecated-declarations)
+cuda_add_executable(yolov5-depth ${HDR_FILES} src/yolov5_depth_detection.cpp src/yololayer.cu)
 add_definitions(-std=c++14 -g -O3 -D_MWAITXINTRIN_H_INCLUDED -Wno-deprecated-declarations)
 
 
@@ -77,11 +79,9 @@ endif ()
 TARGET_LINK_LIBRARIES(cpu-detection ${ZED_LIBS} ${OpenCV_LIBRARIES})
 TARGET_LINK_LIBRARIES(gpu-detection ${ZED_LIBS} ${OpenCV_LIBRARIES})
 TARGET_LINK_LIBRARIES(dist-detection ${ZED_LIBS} ${OpenCV_LIBRARIES})
-target_link_libraries(yolov5-detection ${TRT_LIBS}
-        ${SPECIAL_OS_LIBS}
-        ${ZED_LIBS}
-        ${OPENGL_LIBRARIES}
-        ${GLUT_LIBRARY}
-        ${GLEW_LIBRARIES}
-        ${OpenCV_LIBRARIES}
+target_link_libraries(yolov5-detection ${TRT_LIBS} ${SPECIAL_OS_LIBS} ${ZED_LIBS}
+        ${OPENGL_LIBRARIES} ${GLUT_LIBRARY} ${GLEW_LIBRARIES} ${OpenCV_LIBRARIES}
+        ${CUDA_CUDA_LIBRARY} ${CUDA_CUDART_LIBRARY})
+target_link_libraries(yolov5-depth ${TRT_LIBS} ${SPECIAL_OS_LIBS} ${ZED_LIBS}
+        ${OPENGL_LIBRARIES} ${GLUT_LIBRARY} ${GLEW_LIBRARIES} ${OpenCV_LIBRARIES}
         ${CUDA_CUDA_LIBRARY} ${CUDA_CUDART_LIBRARY})

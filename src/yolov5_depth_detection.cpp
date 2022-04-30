@@ -57,11 +57,10 @@ std::vector<sl::uint2> cvt(const cv::Rect &bbox_in) {
 }
 
 int main(int argc, char **argv) {
-
+    static double previous_time = sl::Timestamp().data_ns;
     std::string wts_name = "";
     std::string engine_name = "/home/vant3d/Documents/zed-opencv-detection/yolo_params/weights/yolov5s.engine";
     bool is_p6 = false;
-    float gd = 0.33f, gw = 0.5f;
 
     /// Opening the ZED camera before the model deserialization to avoid cuda context issue
     sl::Camera zed;
@@ -79,27 +78,10 @@ int main(int argc, char **argv) {
         print("Camera Open", returned_state, "Exit program.");
         return EXIT_FAILURE;
     }
-    zed.enablePositionalTracking();
-    /// Custom OD
-    sl::ObjectDetectionParameters detection_parameters;
-    detection_parameters.enable_tracking = true;
-    detection_parameters.enable_mask_output = false; // designed to give person pixel mask
-    detection_parameters.detection_model = sl::DETECTION_MODEL::CUSTOM_BOX_OBJECTS;
-    returned_state = zed.enableObjectDetection(detection_parameters);
-    if (returned_state != sl::ERROR_CODE::SUCCESS) {
-        print("enableObjectDetection", returned_state, "\nExit program.");
-        zed.close();
-        return EXIT_FAILURE;
-    }
     auto camera_config = zed.getCameraInformation().camera_configuration;
     sl::Resolution pc_resolution(std::min((int) camera_config.resolution.width, 720),
                                  std::min((int) camera_config.resolution.height, 404));
     auto camera_info = zed.getCameraInformation(pc_resolution).camera_configuration;
-    // Create OpenGL Viewer
-//    GLViewer viewer;
-//    viewer.init(argc, argv, camera_info.calibration_parameters.left_cam, true);
-    // ---------
-
 
     // deserialize the .engine and run inference
     std::ifstream file(engine_name, std::ios::binary);
@@ -144,21 +126,18 @@ int main(int argc, char **argv) {
 
     assert(BATCH_SIZE == 1); // This sample only support batch 1 for now
 
-    sl::Mat left_sl;
+    sl::Mat left_sl, depth;
     cv::Mat left_cv_rgb;
     sl::ObjectDetectionRuntimeParameters objectTracker_parameters_rt;
     sl::Objects objects;
-    sl::Pose cam_w_pose;
-    cam_w_pose.pose_data.setIdentity();
 
 //    while (viewer.isAvailable()) {
     while (zed.isOpened()) {
         if (zed.grab() == sl::ERROR_CODE::SUCCESS) {
-            float time = static_cast<float>(sl::TIME_REFERENCE::CURRENT);
-            float time_ns = sl::Timestamp().data_ns;
+            double dt = previous_time - sl::Timestamp().data_ns;
 
             zed.retrieveImage(left_sl, sl::VIEW::LEFT);
-
+            zed.retrieveMeasure(depth, sl::MEASURE::DEPTH, sl::MEM::GPU);
             // Preparing inference
             cv::Mat left_cv_rgba = slMat2cvMat(left_sl);
             cv::cvtColor(left_cv_rgba, left_cv_rgb, cv::COLOR_BGRA2BGR);
@@ -206,11 +185,26 @@ int main(int argc, char **argv) {
             for (size_t j = 0; j < res.size(); j++) {
                 cv::Rect r = get_rect(left_cv_rgb, res[j].bbox);
                 cv::rectangle(left_cv_rgb, r, cv::Scalar(0x27, 0xC1, 0x36), 2);
-                cv::putText(left_cv_rgb, std::to_string((int) res[j].class_id)+" x ", cv::Point(r.x, r.y - 1),
-                            cv::FONT_HERSHEY_PLAIN, 1.2, cv::Scalar(0xFF, 0xFF, 0xFF), 2);
+                float depth_value = 0;
+                if (res[j].class_id == 0) {
+                    depth.getValue(r.width / 2, r.height / 2, &depth_value);
+                    cv::putText(left_cv_rgb,
+                                std::to_string((int) res[j].class_id) + " x " + std::to_string((float) depth_value) +
+                                " mm", cv::Point(r.x, r.y - 2),
+                                cv::FONT_HERSHEY_PLAIN, 1.2, cv::Scalar(0xFF, 0xFF, 0xFF), 2);
+                } else {
+                    cv::putText(left_cv_rgb,
+                                std::to_string((int) res[j].class_id) + " x " + std::to_string((float) res[j].conf),
+                                cv::Point(r.x, r.y - 2),
+                                cv::FONT_HERSHEY_PLAIN, 1.2, cv::Scalar(0xFF, 0xFF, 0xFF), 2);
+                }
             }
-            cv::imshow("Objects", left_cv_rgb);
-            cv::waitKey(10);
+            previous_time = sl::Timestamp().data_ns;
+            std::string label = cv::format("Inference time for a frame : %.2f ms", dt);
+            cv::putText(left_cv_rgb, label, cv::Point(0, 15), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255));
+
+            cv::imshow("Yolo V5 Detection", left_cv_rgb);
+            cv::waitKey(5);
 
         }
     }
