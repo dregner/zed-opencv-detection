@@ -59,8 +59,8 @@ std::vector<sl::uint2> cvt(const cv::Rect &bbox_in) {
 int main(int argc, char **argv) {
     static double previous_time = sl::Timestamp().data_ns;
     std::string wts_name = "";
-    std::string engine_name = "/home/vant3d/Documents/zed-opencv-detection/yolo_params/weights/yolov5s.engine";
-    bool is_p6 = false;
+    std::string engine_name = "/home/jetson/Documents/zed-opencv-detection/yolo_params/weights/yolov5s6.engine";
+    bool is_p6 = true;
 
     /// Opening the ZED camera before the model deserialization to avoid cuda context issue
     sl::Camera zed;
@@ -69,8 +69,8 @@ int main(int argc, char **argv) {
     init_parameters.camera_fps = 60;
     init_parameters.sdk_verbose = true;
     init_parameters.depth_mode = sl::DEPTH_MODE::PERFORMANCE;
-    init_parameters.depth_minimum_distance = 800;
-    init_parameters.coordinate_units = sl::UNIT::MILLIMETER;
+    init_parameters.depth_minimum_distance = 0.7;
+    init_parameters.coordinate_units = sl::UNIT::METER;
     init_parameters.coordinate_system = sl::COORDINATE_SYSTEM::RIGHT_HANDED_Y_UP; // OpenGL's coordinate system is right_handed
     /// Open the camera
     auto returned_state = zed.open(init_parameters);
@@ -130,14 +130,14 @@ int main(int argc, char **argv) {
     cv::Mat left_cv_rgb;
     sl::ObjectDetectionRuntimeParameters objectTracker_parameters_rt;
     sl::Objects objects;
-
+    float depth_value;
 //    while (viewer.isAvailable()) {
     while (zed.isOpened()) {
         if (zed.grab() == sl::ERROR_CODE::SUCCESS) {
             double dt = previous_time - sl::Timestamp().data_ns;
 
             zed.retrieveImage(left_sl, sl::VIEW::LEFT);
-            zed.retrieveMeasure(depth, sl::MEASURE::DEPTH, sl::MEM::GPU);
+            zed.retrieveMeasure(depth, sl::MEASURE::DEPTH, sl::MEM::CPU);
             // Preparing inference
             cv::Mat left_cv_rgba = slMat2cvMat(left_sl);
             cv::cvtColor(left_cv_rgba, left_cv_rgb, cv::COLOR_BGRA2BGR);
@@ -185,19 +185,20 @@ int main(int argc, char **argv) {
             for (size_t j = 0; j < res.size(); j++) {
                 cv::Rect r = get_rect(left_cv_rgb, res[j].bbox);
                 cv::rectangle(left_cv_rgb, r, cv::Scalar(0x27, 0xC1, 0x36), 2);
-                float depth_value = 0;
-                if (res[j].class_id == 0) {
+
+                //if (res[j].class_id == 0) {
                     depth.getValue(r.width / 2, r.height / 2, &depth_value);
                     cv::putText(left_cv_rgb,
                                 std::to_string((int) res[j].class_id) + " x " + std::to_string((float) depth_value) +
-                                " mm", cv::Point(r.x, r.y - 2),
+                                " m", cv::Point(r.x, r.y - 2),
                                 cv::FONT_HERSHEY_PLAIN, 1.2, cv::Scalar(0xFF, 0xFF, 0xFF), 2);
-                } else {
-                    cv::putText(left_cv_rgb,
-                                std::to_string((int) res[j].class_id) + " x " + std::to_string((float) res[j].conf),
-                                cv::Point(r.x, r.y - 2),
-                                cv::FONT_HERSHEY_PLAIN, 1.2, cv::Scalar(0xFF, 0xFF, 0xFF), 2);
-                }
+                    std::cout << "Pixel pos - " << res[j].class_id << ": " << r.width/2 << " x " << r.height/2 << std::endl;
+                //} else {
+                    //cv::putText(left_cv_rgb,
+                               // std::to_string((int) res[j].class_id) + " x " + std::to_string((float) res[j].conf),
+                                //cv::Point(r.x, r.y - 2),
+                                //cv::FONT_HERSHEY_PLAIN, 1.2, cv::Scalar(0xFF, 0xFF, 0xFF), 2);
+             //   }
             }
             previous_time = sl::Timestamp().data_ns;
             std::string label = cv::format("Inference time for a frame : %.2f ms", dt);
