@@ -210,7 +210,7 @@ int main(int argc, char **argv) {
             //Display the image
             cv::imshow("YOLO DETECTION", blobfromimage_mat);
         } else {
-            print("Error during capture : ", returned_state);
+            print("Error during capture : ", returned_state, "");
             break;
         }
 
