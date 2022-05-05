@@ -187,7 +187,7 @@ int main(int argc, char **argv) {
                 cv::rectangle(left_cv_rgb, r, cv::Scalar(0x27, 0xC1, 0x36), 2);
 
                 //if (res[j].class_id == 0) {
-                    depth.getValue(r.width / 2, r.height / 2, &depth_value);
+                    depth.getValue(r.x / 2, r.y / 2, &depth_value, sl::MEM::GPU);
                     cv::putText(left_cv_rgb,
                                 std::to_string((int) res[j].class_id) + " x " + std::to_string((float) depth_value) +
                                 " m", cv::Point(r.x, r.y - 2),
