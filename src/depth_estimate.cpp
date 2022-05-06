@@ -24,7 +24,7 @@ int main(int argc, char **argv) {
 
     sl::InitParameters init_parameters;
     init_parameters.sdk_verbose = false;
-    init_parameters.camera_resolution = sl::RESOLUTION::HD720;
+    init_parameters.camera_resolution = sl::RESOLUTION::VGA;
     init_parameters.camera_fps = 60;
     init_parameters.sdk_verbose = true;
     init_parameters.depth_mode = sl::DEPTH_MODE::PERFORMANCE;
@@ -39,35 +39,46 @@ int main(int argc, char **argv) {
     // Create a sl::Mat object (4 channels of type unsigned char) to store the image.
     auto camera_info = zed.getCameraInformation();
     sl::Mat zed_image(camera_info.camera_configuration.resolution.width,
-                      camera_info.camera_configuration.resolution.height, sl::MAT_TYPE::F32_C1, sl::MEM::CPU);
+                      camera_info.camera_configuration.resolution.height, sl::MAT_TYPE::F32_C1, sl::MEM::GPU);
     // Create an OpenCV Mat that shares sl::Mat data
-    cv::Mat image_ocv  =  slMat2cvMat(zed_image);
+    cv::cuda::GpuMat img_ocv_gpu = slMat2cvMatGPU(zed_image);
+    cv::Mat img_ocv;
     sl::Mat depth;
     float depth_value;
-	
+    int x = 110, y = 130;
+    std::string input;
 
     // Capture new images until 'q' is pressed
     char key = ' ';
     while (key != 'q') {
         // Check that a new image is successfully acquired
         if (zed.grab() == sl::ERROR_CODE::SUCCESS) {
-
+            std::cin >> input;
+            if(key == 'c'){
+                std::cout << "Add X value from 0 to " << camera_info.camera_configuration.resolution.width << std::endl;
+                std::cin >> x;
+                std::cout << "Add Y value from 0 to " << camera_info.camera_configuration.resolution.height << std::endl;
+                std::cin >> y;
+            }
             // Retrieve left image
-            zed.retrieveImage(zed_image, sl::VIEW::DEPTH, sl::MEM::CPU);
+            zed.retrieveImage(zed_image, sl::VIEW::LEFT, sl::MEM::CPU);
 
             //image_ocv_gpu = cv::cuda::GpuMat((int) zed_image.getHeight(), (int) zed_image.getWidth(), CV_8UC4, zed_image.getPtr<sl::uchar1>(sl::MEM::GPU));
-            image_ocv = slMat2cvMat(zed_image);
-
+            img_ocv_gpu = slMat2cvMatGPU(zed_image);
+            cv::circle(img_ocv_gpu, cv::Point(x, y), 100, cv::Scalar(255, 255, 255), cv::FILLED);
+            cv::putText(img_ocv_gpu, std::to_string(depth_value) + " m", cv::Point(x + 100, y + 100),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0), 1);
             // Retrieve depth measure
+            img_ocv_gpu.download(img_ocv);
             zed.retrieveMeasure(depth, sl::MEASURE::DEPTH, sl::MEM::CPU);
             depth.getValue(110, 130, &depth_value);
-            std::cout << "Depth " << depth_value << std::endl;
+            std::cout << "Depth (" <<x << ", " << y << ") - " << depth_value <<" m" << std::endl;
 
 
 
 
             //Display the image
-            cv::imshow("Depth estimate", image_ocv);
+            cv::imshow("Depth estimate", img_ocv);
         } else {
             break;
         }
