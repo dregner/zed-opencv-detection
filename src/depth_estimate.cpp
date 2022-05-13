@@ -23,19 +23,28 @@ int main(int argc, char **argv) {
     sl::Camera zed;
 
     sl::InitParameters init_parameters;
+<<<<<<< HEAD
+    init_parameters.camera_resolution = sl::RESOLUTION::HD720;
+=======
     init_parameters.sdk_verbose = false;
     init_parameters.camera_resolution = sl::RESOLUTION::VGA;
+>>>>>>> cb0ebcacfd2dbacadb39d0c32283e0ee0f534656
     init_parameters.camera_fps = 60;
     init_parameters.sdk_verbose = true;
     init_parameters.depth_mode = sl::DEPTH_MODE::PERFORMANCE;
     init_parameters.coordinate_units = sl::UNIT::METER; // Use meter units (for depth measurements)
-
+    init_parameters.depth_minimum_distance = 0.9;
+    init_parameters.depth_maximum_distance = 20;
+    
 
     // Open the camera
     if (zed.open(init_parameters) != sl::ERROR_CODE::SUCCESS) {
         return EXIT_FAILURE;
     }
-
+    sl::RuntimeParameters runParameters;
+    runParameters.sensing_mode = sl::SENSING_MODE::FILL;
+    runParameters.confidence_threshold = 50;
+    runParameters.texture_confidence_threshold = 100;
     // Create a sl::Mat object (4 channels of type unsigned char) to store the image.
     auto camera_info = zed.getCameraInformation();
     sl::Mat zed_image(camera_info.camera_configuration.resolution.width,
@@ -71,8 +80,13 @@ int main(int argc, char **argv) {
             // Retrieve depth measure
             img_ocv_gpu.download(img_ocv);
             zed.retrieveMeasure(depth, sl::MEASURE::DEPTH, sl::MEM::CPU);
+<<<<<<< HEAD
+            depth.getValue(camera_info.camera_configuration.resolution.width/2, camera_info.camera_configuration.resolution.height/2, &depth_value);
+            std::cout << "Depth midle: " << depth_value << std::endl;
+=======
             depth.getValue(110, 130, &depth_value);
             std::cout << "Depth (" <<x << ", " << y << ") - " << depth_value <<" m" << std::endl;
+>>>>>>> cb0ebcacfd2dbacadb39d0c32283e0ee0f534656
 
 
 

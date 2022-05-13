@@ -59,7 +59,7 @@ std::vector<sl::uint2> cvt(const cv::Rect &bbox_in) {
 int main(int argc, char **argv) {
 
     std::string wts_name = "";
-    std::string engine_name = "/home/vant3d/Documents/zed-opencv-detection/yolo_params/weights/yolov5s.engine";
+    std::string engine_name = "/home/jetson/Documents/zed-opencv-detection/yolo_params/weights/yolov5s_riser_v6.engine";
     bool is_p6 = false;
     float gd = 0.33f, gw = 0.5f;
 
