@@ -26,7 +26,7 @@ int main(int argc, char **argv) {
     init_parameters.camera_resolution = sl::RESOLUTION::HD720;
     init_parameters.camera_fps = 60;
     init_parameters.sdk_verbose = true;
-    init_parameters.depth_mode = sl::DEPTH_MODE::PERFORMANCE;
+    init_parameters.depth_mode = sl::DEPTH_MODE::ULTRA;
     init_parameters.coordinate_units = sl::UNIT::METER; // Use meter units (for depth measurements)
     init_parameters.depth_minimum_distance = 0.4;
     init_parameters.depth_maximum_distance = 20;
@@ -52,7 +52,7 @@ int main(int argc, char **argv) {
     int x = 640, y = 360;
     std::string input;
 
-    // Capture new images until 'q' is pressed
+    //! Capture new images until 'q' is pressed
     char key = ' ';
     while (key != 'q') {
         // Check that a new image is successfully acquired
@@ -63,21 +63,22 @@ int main(int argc, char **argv) {
                 std::cout << "Add Y value from 0 to " << camera_info.camera_configuration.resolution.height << std::endl;
                 std::cin >> y;
             }
-            // Retrieve left image
+            //! Retrieve left image
             zed.retrieveImage(zed_image, sl::VIEW::LEFT, sl::MEM::GPU);
             zed.retrieveImage(depth_view, sl::VIEW::DEPTH, sl::MEM::CPU);
             zed.retrieveMeasure(depth, sl::MEASURE::DEPTH, sl::MEM::CPU);
             accum = 0;
-            for(int k=0; k<10; k++) {
-                depth.getValue(x+k, y+k, &depth_value[k], sl::MEM::CPU);
+            for (size_t k = 0; k < sizeof(depth_value) / sizeof(depth_value[0]); k++) {
+                depth.getValue(x, y, &depth_value[k], sl::MEM::CPU);
                 if(isValidMeasure(depth_value[k])) {
                     accum += depth_value[k] * depth_value[k];
                 }
             }
-            double distance = sqrt(accum/10);
+            double distance = sqrt(accum/sizeof(depth_value) / sizeof(depth_value[0]));
 
-            img_ocv_gpu = slMat2cvMatGPU(zed_image);
-            img_ocv_gpu.download(img_ocv);
+//            img_ocv_gpu = slMat2cvMatGPU(zed_image);
+//            img_ocv_gpu.download(img_ocv);
+            img_ocv = slMat2cvMat(depth_view);
             cv::circle(img_ocv, cv::Point(x, y), 10, cv::Scalar(255, 0, 255), cv::LINE_4);
             cv::putText(img_ocv, std::to_string(distance) + " m", cv::Point(50,  100),
                         cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255), 1);

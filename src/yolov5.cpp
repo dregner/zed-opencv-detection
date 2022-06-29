@@ -59,8 +59,8 @@ std::vector<sl::uint2> cvt(const cv::Rect &bbox_in) {
 int main(int argc, char **argv) {
 
     std::string wts_name = "";
-    std::string engine_name = "/home/jetson/Documents/zed-opencv-detection/yolo_params/weights/yolov5s_riser_v6.engine";
-    bool is_p6 = false;
+    std::string engine_name = "/home/vant3d/Documents/zed-opencv-detection/yolo_params/weights/yolov5s6_80.engine";
+    bool is_p6 = true;
     float gd = 0.33f, gw = 0.5f;
 
     /// Opening the ZED camera before the model deserialization to avoid cuda context issue
@@ -69,9 +69,11 @@ int main(int argc, char **argv) {
     init_parameters.camera_resolution = sl::RESOLUTION::HD720;
     init_parameters.camera_fps = 60;
     init_parameters.sdk_verbose = true;
-    init_parameters.depth_mode = sl::DEPTH_MODE::PERFORMANCE;
+    init_parameters.depth_mode = sl::DEPTH_MODE::ULTRA;
     init_parameters.depth_minimum_distance = 800;
-    init_parameters.coordinate_units = sl::UNIT::MILLIMETER;
+    init_parameters.coordinate_units = sl::UNIT::METER;
+    init_parameters.depth_minimum_distance = 1;
+    init_parameters.depth_maximum_distance = 30;
     init_parameters.coordinate_system = sl::COORDINATE_SYSTEM::RIGHT_HANDED_Y_UP; // OpenGL's coordinate system is right_handed
     /// Open the camera
     auto returned_state = zed.open(init_parameters);
