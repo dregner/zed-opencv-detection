@@ -172,9 +172,6 @@ int main(int argc, char **argv) {
                 tmp.probability = it.conf;
                 tmp.label = (int) it.class_id;
                 tmp.bounding_box_2d = cvt(r);
-                tmp.is_grounded = ((int) it.class_id ==
-                                   0); // Only the first class (person) is grounded, that is moving on the floor plane
-                // others are tracked in full 3D space
                 objects_in.push_back(tmp);
             }
             // Send the custom detected boxes to the ZED
@@ -186,13 +183,19 @@ int main(int argc, char **argv) {
                 cv::Rect r = get_rect(left_cv_rgb, res[j].bbox);
                 cv::rectangle(left_cv_rgb, r, cv::Scalar(0x27, 0xC1, 0x36), 2);
                 accum = 0;
-                for (size_t k = 0; k < sizeof(depth_value) / sizeof(depth_value[0]); k++) {
-                    depth.getValue(r.x / 2 + k, r.y / 2 + k, &depth_value[k], sl::MEM::CPU);
-                    if (isValidMeasure(depth_value[k])) {
-                        accum += depth_value[k] * depth_value[k];
+                std::vector<float> dpth_val;
+                float dval;
+                for (size_t i = r.x; i < r.x+r.width; i++) {
+                    for(size_t j = r.y; j < r.y+r.height; j++) {
+                        depth.getValue(i,j, &dval, sl::MEM::CPU);
+                        if (isValidMeasure(dval)) {
+                            dpth_val.push_back(dval);
+                        }
                     }
                 }
-                double distance = sqrt(accum / (sizeof(depth_value) / sizeof(depth_value[0])));
+                for (auto& n : dpth_val)
+                    accum += n*n;
+                double distance = sqrt(accum / dpth_val.size());
                 cv::putText(left_cv_rgb,
                             std::to_string((int) res[j].class_id) + " x " + std::to_string(distance) +
                             " m", cv::Point(r.x, r.y - 2),

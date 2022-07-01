@@ -57,11 +57,8 @@ std::vector<sl::uint2> cvt(const cv::Rect &bbox_in) {
 }
 
 int main(int argc, char **argv) {
-
-    std::string wts_name = "";
-    std::string engine_name = "/home/vant3d/Documents/zed-opencv-detection/yolo_params/weights/yolov5s6_inpetro.engine";
+    std::string engine_name = "/home/vant3d/Documents/zed-opencv-detection/yolo_params/weights/yolov5s6_80.engine";
     bool is_p6 = true;
-    float gd = 0.33f, gw = 0.5f;
 
     /// Opening the ZED camera before the model deserialization to avoid cuda context issue
     sl::Camera zed;
@@ -70,38 +67,21 @@ int main(int argc, char **argv) {
     init_parameters.camera_fps = 60;
     init_parameters.sdk_verbose = true;
     init_parameters.depth_mode = sl::DEPTH_MODE::ULTRA;
-    init_parameters.depth_minimum_distance = 800;
     init_parameters.coordinate_units = sl::UNIT::METER;
-    init_parameters.depth_minimum_distance = 1;
+    init_parameters.depth_minimum_distance = 1.0;
     init_parameters.depth_maximum_distance = 30;
-    init_parameters.coordinate_system = sl::COORDINATE_SYSTEM::RIGHT_HANDED_Y_UP; // OpenGL's coordinate system is right_handed
+    sl::RuntimeParameters runtimeParameters;
+    runtimeParameters.sensing_mode = sl::SENSING_MODE::FILL;
     /// Open the camera
     auto returned_state = zed.open(init_parameters);
     if (returned_state != sl::ERROR_CODE::SUCCESS) {
         print("Camera Open", returned_state, "Exit program.");
         return EXIT_FAILURE;
     }
-    zed.enablePositionalTracking();
-    /// Custom OD
-    sl::ObjectDetectionParameters detection_parameters;
-    detection_parameters.enable_tracking = true;
-    detection_parameters.enable_mask_output = false; // designed to give person pixel mask
-    detection_parameters.detection_model = sl::DETECTION_MODEL::CUSTOM_BOX_OBJECTS;
-    returned_state = zed.enableObjectDetection(detection_parameters);
-    if (returned_state != sl::ERROR_CODE::SUCCESS) {
-        print("enableObjectDetection", returned_state, "\nExit program.");
-        zed.close();
-        return EXIT_FAILURE;
-    }
     auto camera_config = zed.getCameraInformation().camera_configuration;
     sl::Resolution pc_resolution(std::min((int) camera_config.resolution.width, 720),
                                  std::min((int) camera_config.resolution.height, 404));
     auto camera_info = zed.getCameraInformation(pc_resolution).camera_configuration;
-    // Create OpenGL Viewer
-//    GLViewer viewer;
-//    viewer.init(argc, argv, camera_info.calibration_parameters.left_cam, true);
-    // ---------
-
 
     // deserialize the .engine and run inference
     std::ifstream file(engine_name, std::ios::binary);
@@ -145,26 +125,23 @@ int main(int argc, char **argv) {
     CUDA_CHECK(cudaStreamCreate(&stream));
 
     assert(BATCH_SIZE == 1); // This sample only support batch 1 for now
-
-    sl::Mat left_sl;
+    //! Parameters
+    sl::Mat left_sl, depth;
     cv::Mat left_cv_rgb;
     sl::ObjectDetectionRuntimeParameters objectTracker_parameters_rt;
     sl::Objects objects;
-    sl::Pose cam_w_pose;
-    cam_w_pose.pose_data.setIdentity();
+    float accum;
 
-//    while (viewer.isAvailable()) {
     while (zed.isOpened()) {
-        if (zed.grab() == sl::ERROR_CODE::SUCCESS) {
-            float time = static_cast<float>(sl::TIME_REFERENCE::CURRENT);
-            float time_ns = sl::Timestamp().data_ns;
-
-            zed.retrieveImage(left_sl, sl::VIEW::LEFT);
-
+        if (zed.grab(runtimeParameters) == sl::ERROR_CODE::SUCCESS) {
+            double t = (double) cv::getTickCount();
+            zed.retrieveImage(left_sl, sl::VIEW::LEFT, sl::MEM::GPU);
+            zed.retrieveMeasure(depth, sl::MEASURE::DEPTH, sl::MEM::CPU);
             // Preparing inference
-            cv::Mat left_cv_rgba = slMat2cvMat(left_sl);
+            cv::cuda::GpuMat left_cv_rgba_gpu = slMat2cvMatGPU(left_sl);
+            cv::Mat left_cv_rgba;
+            left_cv_rgba_gpu.download(left_cv_rgba);
             cv::cvtColor(left_cv_rgba, left_cv_rgb, cv::COLOR_BGRA2BGR);
-//            if (left_cv_rgb.empty()) continue;
             cv::Mat pr_img = preprocess_img(left_cv_rgb, INPUT_W, INPUT_H); // letterbox BGR to RGB
             int i = 0;
             int batch = 0;
@@ -185,38 +162,25 @@ int main(int argc, char **argv) {
             auto &res = batch_res[batch];
             nms(res, &prob[batch * OUTPUT_SIZE], CONF_THRESH, NMS_THRESH);
 
-/*            // Preparing for ZED SDK ingesting
-            std::vector<sl::CustomBoxObjectData> objects_in;
-            for (auto &it: res) {
-                sl::CustomBoxObjectData tmp;
-                cv::Rect r = get_rect(left_cv_rgb, it.bbox);
-                // Fill the detections into the correct format
-                tmp.unique_object_id = sl::generate_unique_id();
-                tmp.probability = it.conf;
-                tmp.label = (int) it.class_id;
-                tmp.bounding_box_2d = cvt(r);
-                tmp.is_grounded = ((int) it.class_id ==
-                                   0); // Only the first class (person) is grounded, that is moving on the floor plane
-                // others are tracked in full 3D space
-                objects_in.push_back(tmp);
-            }
-            // Send the custom detected boxes to the ZED
-            zed.ingestCustomBoxObjects(objects_in);*/
-
 
             // Displaying 'raw' objects
-            for (size_t j = 0; j < res.size(); j++) {
-                cv::Rect r = get_rect(left_cv_rgb, res[j].bbox);
-                cv::rectangle(left_cv_rgb, r, cv::Scalar(0x27, 0xC1, 0x36), 2);
-                cv::putText(left_cv_rgb, std::to_string((int) res[j].class_id)+" x ", cv::Point(r.x, r.y - 1),
-                            cv::FONT_HERSHEY_PLAIN, 1.2, cv::Scalar(0xFF, 0xFF, 0xFF), 2);
+            for (size_t k = 0; k < res.size(); k++) {
+                cv::Rect r = get_rect(left_cv_rgb, res[k].bbox);
+                accum = 0;
+                float dval;
+                for (size_t i = r.x; i < r.x + r.width; i++) {
+                    for (size_t j = r.y; j < r.y + r.height; j++) {
+                        depth.getValue(i, j, &dval, sl::MEM::CPU);
+                        if (isValidMeasure(dval)) {
+                            accum = dval * dval;
+                        }
+                    }
+                }
+                double distance = sqrt(accum / (r.width + r.height));
+                std::cout << "Riser [ " << r.x << ", " << r.y << "] @ " << distance << " m" << std::endl;
             }
-            cv::imshow("Objects", left_cv_rgb);
-            cv::waitKey(10);
-
         }
     }
-
     // Release stream and buffers
     cudaStreamDestroy(stream);
     CUDA_CHECK(cudaFree(buffers[inputIndex]));
@@ -225,6 +189,5 @@ int main(int argc, char **argv) {
     context->destroy();
     engine->destroy();
     runtime->destroy();
-
     return 0;
 }
