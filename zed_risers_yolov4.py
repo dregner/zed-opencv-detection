@@ -51,6 +51,7 @@ def main():
     # Create an RGBA sl.Mat object
     image_zed = sl.Mat(zed.get_camera_information().camera_resolution.width, zed.get_camera_information().camera_resolution.height, sl.MAT_TYPE.U8_C4)
     # Retrieve data in a numpy array with get_data()
+    sl.Mat()
     image_ocv = image_zed.get_data()
 
     key = ''
