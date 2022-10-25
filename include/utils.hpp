@@ -1,5 +1,6 @@
 #ifndef DRAWING_UTILS_HPP
 #define DRAWING_UTILS_HPP
+#pragma once
 
 #include <math.h>
 
@@ -7,6 +8,8 @@
 #include <sl/Camera.hpp>
 #include <dirent.h>
 #include <opencv2/opencv.hpp>
+#include <signal.h>
+static bool exit_app = false;
 
 static inline cv::Mat preprocess_img(cv::Mat& img, int input_w, int input_h) {
     int w, h, x, y;
@@ -201,5 +204,16 @@ inline cv::cuda::GpuMat slMat2cvMatGPU(sl::Mat &input) {
     return cv::cuda::GpuMat(input.getHeight(), input.getWidth(), cv_type,
                             input.getPtr<sl::uchar1>(sl::MEM::GPU), input.getStepBytes(sl::MEM::GPU));
 }
+void nix_exit_handler(int s) {
+    exit_app = true;
+}
 
+// Set the function to handle the CTRL-C
+void SetCtrlHandler() {
+    struct sigaction sigIntHandler;
+    sigIntHandler.sa_handler = nix_exit_handler;
+    sigemptyset(&sigIntHandler.sa_mask);
+    sigIntHandler.sa_flags = 0;
+    sigaction(SIGINT, &sigIntHandler, NULL);
+}
 #endif

@@ -70,7 +70,9 @@ cuda_add_executable(yolov5-depth ${HDR_FILES} src/yolov5_depth_detection.cpp src
 add_definitions(-std=c++14 -g -O3 -D_MWAITXINTRIN_H_INCLUDED -Wno-deprecated-declarations)
 cuda_add_executable(yolov5-inpetro ${HDR_FILES} src/yolov5_depth.cpp src/yololayer.cu)
 add_definitions(-std=c++14 -g -O3 -D_MWAITXINTRIN_H_INCLUDED -Wno-deprecated-declarations)
-cuda_add_executable(depth-estiamte ${HDR_FILES} src/depth_estimate.cpp)
+cuda_add_executable(depth-estimate ${HDR_FILES} src/depth_estimate.cpp)
+add_definitions(-std=c++14 -g -O3 -D_MWAITXINTRIN_H_INCLUDED -Wno-deprecated-declarations)
+cuda_add_executable(svo-record ${HDR_FILES} src/svo_record.cpp)
 add_definitions(-std=c++14 -g -O3 -D_MWAITXINTRIN_H_INCLUDED -Wno-deprecated-declarations)
 
 
@@ -83,7 +85,8 @@ endif ()
 TARGET_LINK_LIBRARIES(cpu-detection ${ZED_LIBS} ${OpenCV_LIBRARIES})
 TARGET_LINK_LIBRARIES(gpu-detection ${ZED_LIBS} ${OpenCV_LIBRARIES})
 TARGET_LINK_LIBRARIES(dist-detection ${ZED_LIBS} ${OpenCV_LIBRARIES})
-TARGET_LINK_LIBRARIES(depth-estiamte ${ZED_LIBS} ${OpenCV_LIBRARIES})
+TARGET_LINK_LIBRARIES(depth-estimate ${ZED_LIBS} ${OpenCV_LIBRARIES})
+TARGET_LINK_LIBRARIES(svo-record ${ZED_LIBS} ${OpenCV_LIBRARIES})
 target_link_libraries(yolov5-detection ${TRT_LIBS} ${SPECIAL_OS_LIBS} ${ZED_LIBS}
         ${OPENGL_LIBRARIES} ${GLUT_LIBRARY} ${GLEW_LIBRARIES} ${OpenCV_LIBRARIES}
         ${CUDA_CUDA_LIBRARY} ${CUDA_CUDART_LIBRARY})
