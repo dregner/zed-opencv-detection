@@ -25,7 +25,7 @@ int main(int argc, char **argv) {
     init_parameters.depth_minimum_distance = 0.4;
     init_parameters.depth_maximum_distance = 20;
 
-    timer frame_start = std::chrono::high_resolution_clock::now();
+
     // Open the camera
     if (zed.open(init_parameters) != sl::ERROR_CODE::SUCCESS) {
         return EXIT_FAILURE;
@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
 
 
 // Enable recording with the filename specified in argument
-    sl::String path_output = "/home/vant3d/Documents/svo_record/record_1.svo";
+    sl::String path_output = "/home/jetson/Documents/zed_svo/record_neural.svo";
     auto returned_state = zed.enableRecording(
             sl::RecordingParameters(path_output, sl::SVO_COMPRESSION_MODE::H264_LOSSLESS));
     if (returned_state != sl::ERROR_CODE::SUCCESS) {
@@ -53,18 +53,18 @@ int main(int argc, char **argv) {
 
     int frames_recorded = 0;
     sl::RecordingStatus rec_status;
+
     while (!exit_app) {
+        timer frame_start = std::chrono::high_resolution_clock::now();
         if (zed.grab() == sl::ERROR_CODE::SUCCESS) {
-// Each new frame is added to the SVO file
-            timer frame_end = std::chrono::high_resolution_clock::now();
             rec_status = zed.getRecordingStatus();
-            if (rec_status.status)
+            if (rec_status.status){
                 frames_recorded++;
+             }
+            timer frame_end = std::chrono::high_resolution_clock::now();
             duration frame_duration = frame_end - frame_start;
-
             std::cout << "Frame count: " << std::to_string(frames_recorded) << std::endl;
-            std::cout << "Frame time: " << frame_duration.count()*1000 << "ms" <<std::endl;
-
+            std::cout << "Frame time: " << frame_duration.count()*1000 << " ms" <<std::endl;
         }
     }
 
