@@ -7,7 +7,9 @@
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp>
 #include <utils.hpp>
-
+#include "chrono"
+typedef std::chrono::time_point<std::chrono::high_resolution_clock> timer;
+typedef std::chrono::duration<float> duration;
 
 int main(int argc, char **argv) {
     /// INITIALIZING ZED CAM
@@ -23,7 +25,7 @@ int main(int argc, char **argv) {
     init_parameters.depth_minimum_distance = 0.4;
     init_parameters.depth_maximum_distance = 20;
 
-
+    timer frame_start = std::chrono::high_resolution_clock::now();
     // Open the camera
     if (zed.open(init_parameters) != sl::ERROR_CODE::SUCCESS) {
         return EXIT_FAILURE;
@@ -54,10 +56,14 @@ int main(int argc, char **argv) {
     while (!exit_app) {
         if (zed.grab() == sl::ERROR_CODE::SUCCESS) {
 // Each new frame is added to the SVO file
+            timer frame_end = std::chrono::high_resolution_clock::now();
             rec_status = zed.getRecordingStatus();
             if (rec_status.status)
                 frames_recorded++;
+            duration frame_duration = frame_end - frame_start;
+
             std::cout << "Frame count: " << std::to_string(frames_recorded) << std::endl;
+            std::cout << "Frame time: " << frame_duration.count()*1000 << "ms" <<std::endl;
 
         }
     }
